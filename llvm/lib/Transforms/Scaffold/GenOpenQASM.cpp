@@ -41,6 +41,7 @@ namespace{
 	enum argType{
 		/* Quantum Type. */
 		qbit,
+		abit,
 		cbit,
 		/* Classical Type. */
 		intVal,
@@ -66,108 +67,22 @@ namespace{
 		/* Classical Inst. */
 		int intValue;
 		double doubValue;
-		bool isClassical(){
-			if(type == intVal || type == doubleVal) return true; else return false;
-		}
-		string val(){
-			stringstream ss;
-			if(type == intVal) ss << " " << intValue << " ";
-			if(type == doubleVal) ss << " " << doubValue << " ";
-			return ss.str();
-		}
+		bool isClassical();
+		string val();
+
 		/* Quantum Inst. */
-		bool isqbit(){
-			if(type == qbit) return true; else return false;
-		}
-		bool iscbit(){
-			if(type == cbit) return true; else return false;
-		}
-		void printQRegisterName(){
-			switch(type){
-				case undef:
-					errs() << " UNDEF ";
-					break;
-				case qbit:
-				case cbit:
-					errs() << getName();
-					break;
-				default:
-					errs() << " error ";
-					break;
-			}
-		}
-		string qbitVarString(){
-			stringstream ss;
-			ss << getName();
-			if(index.size() > 1){
-				for(unsigned i = index.size()-1; i > 0; i--)
-					ss << "_" << index[i];
-			}
-				ss << "[" << to_string(index[0]) << "]";
-			return ss.str();
-		}
-		string cbitVarString(){
-			stringstream ss;
-			ss << getName();
-			for(unsigned i = 0; i < index.size(); i++){
-				ss << "_" << index[i];
-			}
-			ss << "[0]";
-			return ss.str();
-		}
+		bool isqbit();
+		bool iscbit();
+		void printQRegisterName();
+		string qbitVarString();
+		string cbitVarString();
 		/* Used in conditional statement, since OpenQASM only support array-wise measurement. */
-		string cbitArrayString(){
-			stringstream ss;
-			ss << getName();
-			for(unsigned i = 0; i < index.size(); i++){
-				ss << "_" << index[i];
-			}
-			return ss.str();
-		}
+		string cbitArrayString();
 
 		dataRepresentation() : instPtr(NULL), type(undef), isPtr(false), index({}), dimSize({}){}
 
 		string getName(){ return instPtr->getName(); }
-		
-		void printDebugMode(){
-			if(isClassical()){
-				/* Printing Classical Value. */
-				errs() << "\t\tPrinting Constant: ";
-				if(type == intVal) errs() << intValue << "\n";
-				if(type == doubleVal) errs() << doubValue << "\n";
-			}else{
-				errs() << "\t\tPrinting Quantum Register:\n";
-				errs() << "\t\tName: ";
-				printQRegisterName();
-				errs() << "\n";
-				errs() << "\t\tType: ";
-				switch(type){
-					case undef:
-						errs() << "UNDEF\n";
-						break;
-					case qbit:
-						errs() << "qubit\n";
-						break;
-					case cbit:
-						errs() << "cbit\n";
-						break;
-					default:
-						errs() << "error\n";
-						break;
-				}
-				errs() << "\t\tSize: ";
-				for(unsigned i = 0; i < dimSize.size(); i++){
-					errs() << "[" << dimSize[i] << "]";
-				}
-				errs() << "\n";
-				errs() << "\t\tIndex: ";
-				if(index.size() == 0) errs() << "Not applied.\n";
-				for(unsigned i = 0; i < index.size(); i++){
-					errs() << "[" << index[i] << "]";
-				}
-				errs() << "\n";
-			}
-		}
+		void printDebugMode();
 	};
 	
 	/* Datapath Sequence. */
@@ -182,9 +97,115 @@ namespace{
 		std::vector<dataRepresentation> qArgs_;
 	};
 
+	bool dataRepresentation::isClassical(){
+		if(type == intVal || type == doubleVal) return true; else return false;
+	}
+
+	string dataRepresentation::val(){
+		stringstream ss;
+		if(type == intVal) ss << " " << intValue << " ";
+		if(type == doubleVal) ss << " " << doubValue << " ";
+		return ss.str();		
+	}
+
+	bool dataRepresentation::isqbit(){
+		if(type == qbit || type == abit) return true; else return false;
+	}
+
+	bool dataRepresentation::iscbit(){
+		if(type == cbit) return true; else return false;
+	}
+
+	void dataRepresentation::printQRegisterName(){
+		switch(type){
+			case undef:
+				errs() << " UNDEF ";
+				break;
+			case qbit:
+			case cbit:
+				errs() << getName();
+				break;
+			default:
+				errs() << " error ";
+				break;
+		}
+	}
+
+	string dataRepresentation::qbitVarString(){
+		stringstream ss;
+		ss << getName();
+		if(index.size() > 1){
+			for(unsigned i = index.size()-1; i > 0; i--)
+				ss << "_" << index[i];
+		}
+			ss << "[" << to_string(index[0]) << "]";
+		return ss.str();	
+	}
+
+	string dataRepresentation::cbitVarString(){
+		stringstream ss;
+		ss << getName();
+		for(unsigned i = 0; i < index.size(); i++){
+			ss << "_" << index[i];
+		}
+		ss << "[0]";
+		return ss.str();
+	}
+
+	string dataRepresentation::cbitArrayString(){
+		stringstream ss;
+		ss << getName();
+		for(unsigned i = 0; i < index.size(); i++){
+			ss << "_" << index[i];
+		}
+		return ss.str();
+	}
+
+	void dataRepresentation::printDebugMode(){
+		if(isClassical()){
+			/* Printing Classical Value. */
+			errs() << "\t\tPrinting Constant: ";
+			if(type == intVal) errs() << intValue << "\n";
+			if(type == doubleVal) errs() << doubValue << "\n";
+		}else{
+			errs() << "\t\tPrinting Quantum Register:\n";
+			errs() << "\t\tName: ";
+			printQRegisterName();
+			errs() << "\n";
+			errs() << "\t\tType: ";
+			switch(type){
+				case undef:
+					errs() << "UNDEF\n";
+					break;
+				case qbit:
+					errs() << "qubit\n";
+					break;
+				case cbit:
+					errs() << "cbit\n";
+					break;
+				default:
+					errs() << "error\n";
+					break;
+			}
+			errs() << "\t\tSize: ";
+			for(unsigned i = 0; i < dimSize.size(); i++){
+				errs() << "[" << dimSize[i] << "]";
+			}
+			errs() << "\n";
+			errs() << "\t\tIndex: ";
+			if(index.size() == 0) errs() << "Not applied.\n";
+			for(unsigned i = 0; i < index.size(); i++){
+				errs() << "[" << index[i] << "]";
+			}
+			errs() << "\n";
+		}
+	}
+
 	argType quantumRegisterSetupHelper(dataRepresentation * qRegister, Type * type){
 		if(type->isIntegerTy(16)){
 			return qbit;
+		}else if(type->isIntegerTyp(8)){
+			return abit;
 		}else if(type->isIntegerTy(1)){
 			return cbit;
 		}else if(type->isArrayTy()){
@@ -227,6 +248,8 @@ namespace{
 	bool isAllocQuantumType(Type * allocatedType){
 		if(allocatedType->isIntegerTy(16)){
 			return true;
+		}else if(allocatedType->isIntegerTy(8)){
+			return true;
 		}else if(allocatedType->isIntegerTy(1)){
 			return true;
 		}else if(ArrayType * arrayType = dyn_cast<ArrayType>(allocatedType)){
@@ -239,17 +262,18 @@ namespace{
 	struct GenQASM : public ModulePass {
 		/* Pass Identification, Replacement for typeid. */
 		static char ID;
+		GenQASM() : ModulePass(ID) {}
 
 		std::vector<dataRepresentation> tmpDepQbit_;
 		std::vector<dataRepresentation> allDepQbit_;
 		
 		map<BasicBlock *, vector<FnCall>> fnCallTable; 
-		map<Function *, vector<dataRepresentation>> mapQbitsInit_;
-		map<Function *, vector<dataRepresentation>> mapFuncArgs_;
+		map<Function *, vector<dataRepresentation>> mapQbitsInit;
+		map<Function *, vector<dataRepresentation>> mapFuncArgs;
 
 		vector<dataRepresentation> qbitsInCurrentFunc_;
 		vector<dataRepresentation> qbitsInitInCurrentFunc_;
-		vector<dataRepresentation> funcArgList_;
+		vector<dataRepresentation> funcArgList;
 
 		vector<FnCall> fnCall;
 
@@ -259,8 +283,6 @@ namespace{
 		map<BasicBlock *, vector<dataRepresentation>> basicBlockCondTable;
 
 		int backtraceCount;
-
-		GenQASM() : ModulePass(ID) {  }
 
 		dataRepresentation backtraceOperand(Value * operand, backtraceExp exp);
 		void backtraceOperand_helper(dataRepresentation * datRepPtr, Value * operand, int gettingIndex, backtraceExp exp);
@@ -487,6 +509,8 @@ X("gen-openqasm", "Generate OpenQASM output code"); //spatil: should be Z or X??
 
 void GenQASM::backtraceOperand_helper(dataRepresentation * datRepPtr, Value * operand, int gettingIndex, backtraceExp exp){
 
+	if(backtraceOperand > MAX_BACKTRACE_COUNT) return else backtraceCount++;
+
 	if(AllocaInst * AI = dyn_cast<AllocaInst>(operand)){
 		if(debugGenOpenQASM)
 			errs() << "\n\t\tAlloca inst Found: " << *AI << "\n";
@@ -580,6 +604,8 @@ void GenQASM::backtraceOperand_helper(dataRepresentation * datRepPtr, Value * op
 
 dataRepresentation GenQASM::backtraceOperand(Value * operand, backtraceExp exp){
 
+	backtraceCount = 0;
+
 	dataRepresentation returnDR;
 	int gettingIndex = 0;
 
@@ -589,7 +615,7 @@ dataRepresentation GenQASM::backtraceOperand(Value * operand, backtraceExp exp){
 }
 
 void GenQASM::analyzeAllocInst(Function * F, Instruction * pInst){
-	if (AllocaInst *AI = dyn_cast<AllocaInst>(pInst)){
+	if (AllocaInst * AI = dyn_cast<AllocaInst>(pInst)){
 		Type * allocatedType_ = AI->getAllocatedType();
 
 		if(isAllocQuantumType(allocatedType_)){
@@ -946,6 +972,11 @@ void GenQASM::analyzeInst_block(BasicBlock * basicBlock, Instruction * pInst){
 			errs() << "\tNum Operands: " << numOps << ";\n";
 		}
 		processConditionInst(basicBlock, BI);
+	}else{
+		if(debugGenOpenQASM){
+			errs() << "\n\tUnhandled Instruction: " << *pInst << "\n";
+			errs() << "\tNum Operands: " << numOps << ";\n";
+		}	
 	}
 	return;
 }
@@ -1067,7 +1098,7 @@ void GenQASM::genQASM_block(BasicBlock * blockBlock){
 
 			if(fToPrint.find("CNOT") != string::npos) fToPrint = "cx";
 			else if(fToPrint.find("Toffoli.") != string::npos) fToPrint = "ccx";
-			else if(fToPrint.find("H.i") != string::npos) fToPrint = "h";
+			else if(fToPrint.find("H.") != string::npos) fToPrint = "h";
 			else if(fToPrint.find("S.") != string::npos) fToPrint = "s";
 			else if(fToPrint.find("T.") != string::npos) fToPrint = "t";
 			else if(fToPrint.find("Sdag") != string::npos) fToPrint = "sdg";
@@ -1110,7 +1141,7 @@ void GenQASM::getFunctionArguments(Function* F){
 		}else{
 			classicalRegisterSetup(&arg);
 		}
-		funcArgList_.push_back(arg);
+		funcArgList.push_back(arg);
 		if(debugGenOpenQASM) arg.printDebugMode();
 
 		// std::string argName = (ait->getName()).str();
@@ -1200,7 +1231,7 @@ bool GenQASM::runOnModule(Module &M){
 				/* Initialize map structures for this function. */
 				qbitsInCurrentFunc_.clear();
 				qbitsInitInCurrentFunc_.clear();
-				funcArgList_.clear();				
+				funcArgList.clear();				
 
 				getFunctionArguments(F);
 				
@@ -1220,8 +1251,8 @@ bool GenQASM::runOnModule(Module &M){
 
 				/* Process Quantum Function. */
 				if(qbitsInCurrentFunc_.size()>0){
-					mapQbitsInit_.insert(make_pair(F, qbitsInitInCurrentFunc_));
-					mapFuncArgs_.insert(make_pair(F, funcArgList_));
+					mapQbitsInit.insert(make_pair(F, qbitsInitInCurrentFunc_));
+					mapFuncArgs.insert(make_pair(F, funcArgList));
 					qFuncs.push_back(F);
 					
 					errs() << "\n-----END" << "\n";
