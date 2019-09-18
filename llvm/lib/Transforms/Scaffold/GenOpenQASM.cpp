@@ -122,6 +122,7 @@ namespace{
 				errs() << " UNDEF ";
 				break;
 			case qbit:
+			case abit:
 			case cbit:
 				errs() << getName();
 				break;
@@ -134,30 +135,46 @@ namespace{
 	string dataRepresentation::qbitVarString(){
 		stringstream ss;
 		ss << getName();
-		if(index.size() > 1){
-			for(unsigned i = index.size()-1; i > 0; i--)
-				ss << "_" << index[i];
-		}
+		if(!isPtr){
+			if(index.size() == 0) index.push_back(0);
+			if(index.size() > 1){
+				for(unsigned i = index.size()-1; i > 0; i--)
+					ss << "x" << index[i];
+			}
 			ss << "[" << to_string(index[0]) << "]";
-		return ss.str();	
+		}
+
+		string retStr = ss.str();
+		std::replace(retStr.begin(), retStr.end(), '.', 'x');
+		std::replace(retStr.begin(), retStr.end(), '_', 'x');
+		return retStr;	
 	}
 
 	string dataRepresentation::cbitVarString(){
 		stringstream ss;
 		ss << getName();
-		for(unsigned i = 0; i < index.size(); i++){
-			ss << "_" << index[i];
+		if(!isPtr){
+			for(unsigned i = 0; i < index.size(); i++){
+				ss << "x" << index[i];
+			}
+			ss << "[0]";
 		}
-		ss << "[0]";
-		return ss.str();
+		string retStr = ss.str();
+		std::replace(retStr.begin(), retStr.end(), '.', 'x');
+		std::replace(retStr.begin(), retStr.end(), '_', 'x');
+		return retStr;	
 	}
 
 	string dataRepresentation::cbitArrayString(){
 		stringstream ss;
 		ss << getName();
-		for(unsigned i = 0; i < index.size(); i++){
-			ss << "_" << index[i];
+
+		if(!isPtr){
+			for(unsigned i = 0; i < index.size(); i++){
+				ss << "x" << index[i];
+			}
 		}
+
 		return ss.str();
 	}
 
@@ -177,6 +194,7 @@ namespace{
 				case undef:
 					errs() << "UNDEF\n";
 					break;
+				case abit:
 				case qbit:
 					errs() << "qubit\n";
 					break;
@@ -204,7 +222,7 @@ namespace{
 	argType quantumRegisterSetupHelper(dataRepresentation * qRegister, Type * type){
 		if(type->isIntegerTy(16)){
 			return qbit;
-		}else if(type->isIntegerTyp(8)){
+		}else if(type->isIntegerTy(8)){
 			return abit;
 		}else if(type->isIntegerTy(1)){
 			return cbit;
@@ -213,8 +231,7 @@ namespace{
 			qRegister->dimSize.push_back(arrayType->getNumElements());
 			return quantumRegisterSetupHelper(qRegister, arrayType->getElementType());
 		}else if(type->isPointerTy()){
-			////// Pending...
-			if(!(qRegister->isPtr)) qRegister->isPtr = true;
+			qRegister->isPtr = true;
 			return quantumRegisterSetupHelper(qRegister, type->getPointerElementType());
 		}else{
 			return undef;
@@ -225,6 +242,7 @@ namespace{
 		AllocaInst * AI = dyn_cast<AllocaInst>(qRegister->instPtr);
 		Type * allocatedType = AI->getAllocatedType();
 		qRegister->type = quantumRegisterSetupHelper(qRegister, allocatedType);
+		//if(qRegister->type == cbit) qRegister->isPtr = true;
 	}
 
 	void classicalRegisterSetup(dataRepresentation * cRegister){
@@ -302,54 +320,6 @@ namespace{
 		void genQASM_REG(Function* F);
 		void genQASM_block(BasicBlock * blockBlock);
 
-
-		string printVarName(StringRef s){
-			std::string sName = s.str();
-			std::replace(sName.begin(), sName.end(), '.', '_');
-
-			unsigned pos = sName.rfind("..");
-
-			if(pos == sName.length()-2){
-				std::string s1 = sName.substr(0,pos);
-				return s1;
-			}else{
-				unsigned pos1 = sName.rfind(".");
-
-				if(pos1 == sName.length()-1){
-					std::string s1 = sName.substr(0,pos1);
-					return s1;
-				}else{
-					pos = sName.find(".addr");
-					std::string s1 = sName.substr(0,pos);     
-					return s1;
-				}
-			}
-    	}
-    
-		// void print_qgateArg(qGateArg qg){
-		// 	if(qg.isUndef)
-		// 		errs() << " UNDEF ";
-		// 	else{
-		// 		if(qg.isQbit || qg.isCbit || qg.isAbit){
-		// 			errs() << printVarName(qg.argPtr->getName());
-		// 			if(!(qg.isPtr)){
-		// 				//if only single-dimensional qbit arrays expected
-		// 				//--if(qg.numDim == 0)
-		// 				//errs()<<"["<<qg.valOrIndex<<"]";
-		// 				//--else
-		// 				//if n-dimensional qbit arrays expected
-		// 				for(int ndim = 0; ndim < qg.numDim; ndim++)
-		// 					errs() << "[" << qg.dimSize[ndim] << "]";
-		// 			}
-		// 		}else{
-		// 			//assert(!qg.isPtr); //NOTE: not expecting non-quantum pointer variables as arguments to quantum functions. If they exist, then print out name of variable
-		// 			if(qg.isPtr) errs() << " UNRECOGNIZED ";
-		// 			else if(qg.isDouble) errs() << qg.val;
-		// 			else errs() << qg.valOrIndex;
-		// 		}
-		// 	}
-		// }
-
 		/* getAnalysisUsage - Requires the CallGraph. */
 		virtual void getAnalysisUsage(AnalysisUsage &AU) const {
 			AU.setPreservesAll();
@@ -362,159 +332,28 @@ char GenQASM::ID = 0;
 static RegisterPass<GenQASM>
 X("gen-openqasm", "Generate OpenQASM output code"); //spatil: should be Z or X??
 
-// bool GenQASM::backtraceOperand(Value* opd, int opOrIndex){
-
-// 	if(opOrIndex == 0){	//backtrace for operand
-// 		//search for opd in qbit/cbit vector
-// 		std::vector<Value*>::iterator vIter=std::find(vectQbit.begin(),vectQbit.end(),opd);
-// 		if(vIter != vectQbit.end()){
-// 			tmpDepQbit[0].argPtr = opd;
-// 			return true;
-// 		}
-
-// 		if(backtraceCount>MAX_BACKTRACE_COUNT) return false;
-
-// 		if(GetElementPtrInst *GEPI = dyn_cast<GetElementPtrInst>(opd)){
-
-// 			if(GEPI->hasAllConstantIndices()){
-// 				Instruction* pInst = dyn_cast<Instruction>(opd);
-// 				unsigned numOps = pInst->getNumOperands();
-
-// 				bool foundOne = backtraceOperand(pInst->getOperand(0),0);
-
-// 				if(numOps>2){ //set the dimensionality of the qbit
-// 					tmpDepQbit[0].numDim = numOps-2;
-				
-// 					for(unsigned arrIter=2; arrIter < numOps; arrIter++){
-// 						ConstantInt *CI = dyn_cast<ConstantInt>(pInst->getOperand(arrIter));
-// 						//errs() << "Arr[ "<<arrIter<<" ] = "<<CI->getZExtValue()<<"\n";
-// 						if(tmpDepQbit.size()==1){
-// 							tmpDepQbit[0].dimSize[arrIter-2] = CI->getZExtValue();  
-// 						}
-// 					}
-// 				}else if(numOps==2){
-// 					tmpDepQbit[0].numDim = 1;
-// 					ConstantInt *CI = dyn_cast<ConstantInt>(pInst->getOperand(numOps-1));
-// 					if(tmpDepQbit.size()==1){
-// 						tmpDepQbit[0].dimSize[0] = CI->getZExtValue();
-// 					}
-// 				}
-
-// 				//NOTE: getelemptr instruction can have multiple indices. Currently considering last operand as desired index for qubit. Check this reasoning. 
-// 				ConstantInt *CI = dyn_cast<ConstantInt>(pInst->getOperand(numOps-1));
-// 				if(tmpDepQbit.size()==1){
-// 					tmpDepQbit[0].valOrIndex = CI->getZExtValue();
-// 				}
-// 				return foundOne;
-// 			}else if(GEPI->hasIndices()){ //NOTE: Edit this function for multiple indices, some of which are constant, others are not.
-			
-// 				errs() << "Oh no! I don't know how to handle this case..ABORT ABORT..\n";
-// 				Instruction* pInst = dyn_cast<Instruction>(opd);
-// 				unsigned numOps = pInst->getNumOperands();
-// 				if(debugGenOpenQASM)
-// 					errs() << "\tHas non-constant index. Num Operands: " << numOps << ": ";		
-// 				bool foundOne = backtraceOperand(pInst->getOperand(0),0);
-
-// 				if(tmpDepQbit[0].isQbit && !(tmpDepQbit[0].isPtr)){     
-// 					//NOTE: getelemptr instruction can have multiple indices. consider last operand as desired index for qubit. Check if this is true for all.
-// 					backtraceOperand(pInst->getOperand(numOps-1),1);
-// 				}else if(tmpDepQbit[0].isAbit && !(tmpDepQbit[0].isPtr)){
-// 					backtraceOperand(pInst->getOperand(numOps-1),1);
-// 				}
-// 				return foundOne;
-// 			}else{
-// 				Instruction* pInst = dyn_cast<Instruction>(opd);
-// 				unsigned numOps = pInst->getNumOperands();
-// 				bool foundOne = false;
-// 				for(unsigned iop=0;(iop<numOps && !foundOne);iop++){
-// 					foundOne = foundOne || backtraceOperand(pInst->getOperand(iop),0);
-// 				}
-// 				return foundOne;
-// 			}
-// 		}
-		
-// 		if(isa<LoadInst>(opd)){
-// 			if(tmpDepQbit[0].isQbit && !tmpDepQbit[0].isPtr){
-// 				tmpDepQbit[0].numDim = 1;
-// 				tmpDepQbit[0].dimSize[0] = 0;
-// 				//Added default dim to qbit & not ptr variable.
-// 			}else if(tmpDepQbit[0].isAbit && !tmpDepQbit[0].isPtr){
-// 				tmpDepQbit[0].numDim = 1;
-// 				tmpDepQbit[0].dimSize[0] = 0;
-// 			}
-// 		}
-
-// 		if(Instruction* pInst = dyn_cast<Instruction>(opd)){
-// 			unsigned numOps = pInst->getNumOperands();
-// 			bool foundOne = false;
-// 			for(unsigned iop=0;(iop<numOps && !foundOne);iop++){
-// 				backtraceCount++;
-// 				foundOne = foundOne || backtraceOperand(pInst->getOperand(iop),0);
-// 				backtraceCount--;
-// 			}
-// 			return foundOne;
-// 		}else{
- 
-// 			return false;
-// 		}
-// 	}else if(opOrIndex == 1){ //opOrIndex == 1; i.e. Backtracing for Index    
-// 		if(backtraceCount>MAX_BACKTRACE_COUNT) return true; //prevent infinite backtracing 
-
-// 		if(ConstantInt *CI = dyn_cast<ConstantInt>(opd)){
-// 			tmpDepQbit[0].valOrIndex = CI->getZExtValue();
-// 			return true;
-// 		}    
-// 		if(Instruction* pInst = dyn_cast<Instruction>(opd)){
-// 			unsigned numOps = pInst->getNumOperands();
-// 			bool foundOne = false;
-// 			for(unsigned iop=0;(iop<numOps && !foundOne);iop++){
-// 				backtraceCount++;
-// 				foundOne = foundOne || backtraceOperand(pInst->getOperand(iop),1);
-// 				backtraceCount--;
-// 			}
-// 			return foundOne;
-// 		}
-// 	}else{ //opOrIndex == 2: backtracing to call inst MeasZ
-// 		if(CallInst *endCI = dyn_cast<CallInst>(opd)){
-// 			if(endCI->getCalledFunction()->getName().find("llvm.Meas") != string::npos){
-// 				tmpDepQbit[0].argPtr = opd;
-// 				return true;
-// 			}else{
-// 				if(Instruction* pInst = dyn_cast<Instruction>(opd)){
-// 					unsigned numOps = pInst->getNumOperands();
-// 					bool foundOne=false;
-// 					for(unsigned iop = 0; (iop < numOps && !foundOne); iop++){
-// 						backtraceCount++;
-// 						foundOne = foundOne || backtraceOperand(pInst->getOperand(iop),2);
-// 						backtraceCount--;
-// 					}
-// 					return foundOne;
-// 				}
-// 			}
-// 		}else{
-// 			if(Instruction* pInst = dyn_cast<Instruction>(opd)){
-// 				unsigned numOps = pInst->getNumOperands();
-// 				bool foundOne=false;
-// 				for(unsigned iop=0;(iop<numOps && !foundOne);iop++){
-// 					backtraceCount++;
-// 					foundOne = foundOne || backtraceOperand(pInst->getOperand(iop),2);
-// 					backtraceCount--;
-// 				}
-// 				return foundOne;
-// 			}
-// 		}
-// 	}
-//   	return false;
-// }
 
 void GenQASM::backtraceOperand_helper(dataRepresentation * datRepPtr, Value * operand, int gettingIndex, backtraceExp exp){
 
-	if(backtraceOperand > MAX_BACKTRACE_COUNT) return else backtraceCount++;
+	if(backtraceCount > MAX_BACKTRACE_COUNT){
+		errs() << "Exceed max backtrace count...";
+		return;
+	}else{
+		backtraceCount++;
+	}
 
 	if(AllocaInst * AI = dyn_cast<AllocaInst>(operand)){
 		if(debugGenOpenQASM)
 			errs() << "\n\t\tAlloca inst Found: " << *AI << "\n";
 		datRepPtr->instPtr = AI;
+		if(datRepPtr->isPtr){
+			for(vector<dataRepresentation>::iterator vvit = qbitsInitInCurrentFunc_.begin(),
+				vvitE = qbitsInitInCurrentFunc_.end(); vvit != vvitE; ++vvit){
+				if((*vvit).iscbit()){
+					(*vvit).isPtr = true;
+				}
+			}	
+		}
 		return;
 
 	}else if(GetElementPtrInst * GEPI = dyn_cast<GetElementPtrInst>(operand)){
@@ -527,6 +366,10 @@ void GenQASM::backtraceOperand_helper(dataRepresentation * datRepPtr, Value * op
 				int index = CInt->getSExtValue();
 				if(debugGenOpenQASM) errs() << "\t\t[" << gettingIndex << "] Index: " << index << "\n";
 				backtraceOperand_helper(datRepPtr, GEPI->getOperand(0), gettingIndex, exp);
+			}else if(GEPI->getOperand(2)->getType()->isIntegerTy(32)){
+				/* Merely a pointer. */
+				datRepPtr->isPtr = true;
+				backtraceOperand_helper(datRepPtr, GEPI->getOperand(0), gettingIndex, exp);
 			}else{
 				ConstantInt * CInt = dyn_cast<ConstantInt>(GEPI->getOperand(2));
 				int index = CInt->getSExtValue();
@@ -534,7 +377,6 @@ void GenQASM::backtraceOperand_helper(dataRepresentation * datRepPtr, Value * op
 				datRepPtr->index.push_back(index);
 				backtraceOperand_helper(datRepPtr, GEPI->getOperand(0), gettingIndex, exp);
 			}
-			return;
 		}else if(GEPI->getNumOperands() == 2){
 			ConstantInt * CInt = dyn_cast<ConstantInt>(GEPI->getOperand(1));
 			int index = CInt->getSExtValue();
@@ -545,15 +387,13 @@ void GenQASM::backtraceOperand_helper(dataRepresentation * datRepPtr, Value * op
 			errs() << "UNHANDLED GEPI CASE, BOOOOOOOOOO!\n";
 		}
 		return;
+
 	}else if(CallInst * CI = dyn_cast<CallInst>(operand)){
 		if(debugGenOpenQASM)
 			errs() << "\n\t\tCall inst Found: " << *CI << "\n";
 		if(CI->getCalledFunction()->getName().find("llvm.Meas") != string::npos){
-			/////Pending...
 			if(debugGenOpenQASM) errs() << "\n\t\tBACKTRACE OPERAND QUBIT: \n";
 			backtraceOperand_helper(datRepPtr, CI->getOperand(0), gettingIndex, exp);
-			// dataRepresentation qubit = backtraceOperand_(CI->getOperand(0));
-			// datRepPtr->instPtr = operand;
 		}
 		return;
 	}else if(PtrToIntInst * PTTI = dyn_cast<PtrToIntInst>(operand)){
@@ -628,146 +468,44 @@ void GenQASM::analyzeAllocInst(Function * F, Instruction * pInst){
 			
 			if(debugGenOpenQASM) qRegister.printDebugMode();
 
-			//qubits/new qubits in function
-			qbitsInCurrentFunc_.push_back(qRegister);
-			qbitsInitInCurrentFunc_.push_back(qRegister);
+			if(qRegister.instPtr->getName().find(".addr")!= string::npos){
+			
+				/* Note: Necessary if -mem2reg is not run on IR before.
+					Eg, without -mem2reg
+						module(i8 * %q){
+							%q.addr = alloca i8*, align 8
+							...
+						}
+						qbit q.addr must be mapped to argement q. */
 
-		}
-
-		// Type *allocatedType = AI->getAllocatedType();
-		// if(ArrayType *arrayType = dyn_cast<ArrayType>(allocatedType)){
-		// 	qGateArg tmpQArg;
-		// 	Type *elementType = arrayType->getElementType();
-		// 	uint64_t arraySize = arrayType->getNumElements();
-		// 	if (elementType->isIntegerTy(16)){
-
-		// 		vectQbit.push_back(AI);
-		// 		tmpQArg.isQbit = true;
-		// 		tmpQArg.argPtr = AI;
-		// 		tmpQArg.numDim = 1;
-		// 		tmpQArg.dimSize[0] = arraySize;
-		// 		tmpQArg.valOrIndex = arraySize;
-				
-		// 		qbitsInCurrentFunc.push_back(tmpQArg);
-		// 		qbitsInitInCurrentFunc.push_back(tmpQArg);	
-		// 	}else if(elementType->isIntegerTy(1)){
-
-		// 		vectQbit.push_back(AI); //Cbit added here
-		// 		tmpQArg.isCbit = true;
-		// 		tmpQArg.argPtr = AI;
-		// 		tmpQArg.numDim = 1;
-		// 		tmpQArg.dimSize[0] = arraySize;
-		// 		tmpQArg.valOrIndex = arraySize;
-				
-		// 		qbitsInCurrentFunc.push_back(tmpQArg);	
-		// 		qbitsInitInCurrentFunc.push_back(tmpQArg);	
-		// 	}else if(elementType->isIntegerTy(8)){
-
-		// 		vectQbit.push_back(AI); //Cbit added here
-		// 		tmpQArg.isCbit = false;
-		// 		tmpQArg.isAbit = true;
-		// 		tmpQArg.argPtr = AI;
-		// 		tmpQArg.numDim = 1;
-		// 		tmpQArg.dimSize[0] = arraySize;
-		// 		tmpQArg.valOrIndex = arraySize;
-				
-		// 		qbitsInCurrentFunc.push_back(tmpQArg);
-		// 		qbitsInitInCurrentFunc.push_back(tmpQArg);	
-
-		// 	}else if(elementType->isArrayTy()){
-
-		// 		tmpQArg.dimSize[0] = arraySize;
-		// 		tmpQArg.numDim++;
-		// 		tmpQArg.valOrIndex = arraySize;
-
-		// 		bool isQAlloc = getQbitArrDim(elementType,&tmpQArg);
-
-		// 		if(isQAlloc){
-		// 			vectQbit.push_back(AI);
-		// 			tmpQArg.argPtr = AI;
+				if(qRegister.type == qbit || qRegister.type == abit){
+					bool qbitExisting = false;
+					string qbitname = qRegister.instPtr->getName().str();
+					unsigned pos = qbitname.find(".addr");
+					qbitname = qbitname.substr(0, pos);
+					for(vector<dataRepresentation>::iterator vvit = funcArgList.begin(),
+						vvitE = funcArgList.end(); ((vvit != vvitE) && !qbitExisting); ++vvit){
+						if((*vvit).instPtr->getName() == qbitname) qbitExisting = true;
+					}
 					
-		// 			qbitsInCurrentFunc.push_back(tmpQArg);
-		// 			qbitsInitInCurrentFunc.push_back(tmpQArg);
-		// 		}	  
-      	// 	}
-		// }else if(allocatedType->isIntegerTy(16)){
-
-		// 	qGateArg tmpQArg;
-		// 	vectQbit.push_back(AI);
-		// 	tmpQArg.isQbit = true;
-		// 	tmpQArg.argPtr = AI;
-		// 	tmpQArg.numDim = 1;
-
-		// 	tmpQArg.dimSize[0] = cast<ConstantInt>(AI->getArraySize())->getSExtValue();
-		// 	tmpQArg.valOrIndex = 1;
-		// 	qbitsInCurrentFunc.push_back(tmpQArg);
-		// 	qbitsInitInCurrentFunc.push_back(tmpQArg);
-
-		// }else if(allocatedType->isPointerTy()){
-		
-		// 	/*Note: this is necessary if -mem2reg is not run on LLVM IR before.
-		// 	Eg without -mem2reg
-		// 	module(i8* %q){
-		// 	%q.addr = alloca i8*, align 8
-		// 	...
-		// 	}
-		// 	qbit q.addr must be mapped to argument q. Hence the following code.
-		// 	If it is known that -O1 will be run, then this can be removed.
-		// 	*/
-		
-		// 	Type *elementType = allocatedType->getPointerElementType();
-		// 	if (elementType->isIntegerTy(16)){
-		// 		vectQbit.push_back(AI);
-				
-		// 		qGateArg tmpQArg;
-		// 		tmpQArg.isPtr = true;
-		// 		tmpQArg.isQbit = true;
-		// 		tmpQArg.argPtr = AI;
-				
-		// 		//(qbitsInCurrentFunc.find(F))->second.push_back(tmpQArg);
-		// 		qbitsInCurrentFunc.push_back(tmpQArg);
-				
-		// 		std::string argName = AI->getName();
-		// 		unsigned pos = argName.find(".addr");
-		// 		std::string argName2 = argName.substr(0,pos);
-
-		// 		//find argName2 in funcArgList - avoid printing out qbit declaration twice
-		// 		//std::map<Function*, vector<qGateArg> >::iterator mIter = funcArgList.find(F);
-		// 		//if(mIter != funcArgList.end()){
-		// 		bool foundit = false;
-		// 		for(vector<qGateArg>::iterator vParamIter = funcArgList.begin();(vParamIter!=funcArgList.end() && !foundit);++vParamIter){
-		// 			if((*vParamIter).argPtr->getName() == argName2){ 
-		// 				foundit = true;
-		// 			}
-		// 		}
-		// 		if(!foundit) //do not add duplicate declaration	    
-		// 			qbitsInitInCurrentFunc.push_back(tmpQArg);
-		// 	}else if(elementType->isIntegerTy(8)){
-		// 		vectQbit.push_back(AI);
-		// 		qGateArg tmpQArg;
-		// 		tmpQArg.isPtr = true;
-		// 		tmpQArg.isAbit = true;
-		// 		tmpQArg.argPtr = AI;
-
-		// 		qbitsInCurrentFunc.push_back(tmpQArg);
-
-		// 		std::string argName = AI->getName();
-		// 		unsigned pos = argName.find(".addr");
-		// 		std::string argName2 = argName.substr(0,pos);
-		// 		bool foundit = false;
-		// 		for(vector<qGateArg>::iterator vParamIter = funcArgList.begin();(vParamIter!=funcArgList.end() && !foundit);++vParamIter){
-		// 			if((*vParamIter).argPtr->getName() == argName2) foundit = true;
-		// 		}
-		// 		if(!foundit) qbitsInitInCurrentFunc.push_back(tmpQArg);
-		// 	}
-		// }
+					if(!qbitExisting) qbitsInCurrentFunc_.push_back(qRegister);
+				}else{
+					//qubits/new qubits in function
+					qbitsInCurrentFunc_.push_back(qRegister);
+					qbitsInitInCurrentFunc_.push_back(qRegister);
+				}
+			}else{
+				//qubits/new qubits in function
+				qbitsInCurrentFunc_.push_back(qRegister);
+				qbitsInitInCurrentFunc_.push_back(qRegister);
+			}
+		}
     return;
   	}
 }
 
 void GenQASM::processStoreCbitInst(CallInst * CI){
-	//if(debugGenOpenQASM) errs() << "\n\t\tBACKTRACE OPERAND MEASURE : \n";
-	///// assert
+
 	Value * rtnVal_ = CI->getArgOperand(0);
 	tmpDepQbit_.clear();
 
@@ -779,36 +517,16 @@ void GenQASM::processStoreCbitInst(CallInst * CI){
 	tmpDepQbit_.push_back(cbit);
 	mapInstRtn_[rtnVal_] = tmpDepQbit_[0];
 	tmpDepQbit_.clear();
-	///// Pending...
-
-	// qGateArg tempMeasureValue_;
-	// tempMeasureValue_.isCbit = true;
-	// tmpDepQbit.push_back(tempMeasureValue_);
-	// backtraceOperand(CI->getArgOperand(0), 2);
-	// Value * rtnVal = tmpDepQbit[0].argPtr;
-	// tmpDepQbit.clear();
-
-	// qGateArg tmpCbit_;
-	// tmpCbit_.isCbit = true;
-	// tmpCbit_.isPtr = true;
-	// tmpDepQbit.push_back(tmpCbit_);
-
-	// backtraceOperand(CI->getArgOperand(1), 0);
-	// mapInstRtn[rtnVal] = tmpDepQbit[0];
-
-	// tmpDepQbit.clear();
 
 	return;
 }
 
 void GenQASM::processCallInst(CallInst * callInst){
-	// bool tracked_all_operands = true;// D
 	
 	/* Traverse all argument operand in call inst. */
 	for(unsigned iOperand = 0; iOperand < callInst->getNumArgOperands(); iOperand++){
 
 		tmpDepQbit_.clear();
-		// tmpDepQbit.clear();
 
 		if(debugGenOpenQASM) errs() << "\tANALYZE CALL INST OPERAND NUM: " << iOperand << "\n";
 		dataRepresentation argument = backtraceOperand(callInst->getArgOperand(iOperand), nonExp);
@@ -825,90 +543,13 @@ void GenQASM::processCallInst(CallInst * callInst){
 		}
 			
 		allDepQbit_.push_back(tmpDepQbit_[0]);
-		// 	assert(tmpDepQbit.size() == 1 && "tmpDepQbit SIZE GT 1");
-		// tmpDepQbit.clear();
 		tmpDepQbit_.clear();
-		// }
-		
-	// 	qGateArg tmpQGateArg;
-	// 	backtraceCount=0;
-
-	// 	tmpQGateArg.argNum = iOperand;
-
-	// 	//qGateArgSetup(tmpQGateArg, argType);
-
-	// 	if(argType->isPointerTy()){
-	// 		tmpQGateArg.isPtr = true;
-	// 		Type *argElemType = argType->getPointerElementType();
-	// 		if(argElemType->isIntegerTy(16)) tmpQGateArg.isQbit = true;
-	// 		if(argElemType->isIntegerTy(1)) tmpQGateArg.isCbit = true;
-	// 		if(argElemType->isIntegerTy(8)) tmpQGateArg.isAbit = true;
-	// 	}else if(argType->isIntegerTy(16)){
-	// 		tmpQGateArg.isQbit = true;
-	// 		tmpQGateArg.valOrIndex = 0;	 
-	// 	}else if(argType->isIntegerTy(32)){
-	// 		if(ConstantInt *CInt = dyn_cast<ConstantInt>(callInst->getArgOperand(iOperand))){
-	// 			tmpQGateArg.isParam = true;
-	// 			tmpQGateArg.valOrIndex = CInt->getZExtValue();
-	// 		}
-	// 	}else if(argType->isIntegerTy(8)){
-	// 		tmpQGateArg.isAbit = true;
-	// 		tmpQGateArg.valOrIndex = 0;
-	// 	}else if(argType->isIntegerTy(1)){
-	// 		tmpQGateArg.isCbit = true;
-	// 		tmpQGateArg.valOrIndex = 0;	 
-	// 	}	  	
-
-	// 	//check if argument is constant int	
-	// 	if(ConstantInt *CInt = dyn_cast<ConstantInt>(callInst->getArgOperand(iOperand))){
-	// 		tmpQGateArg.valOrIndex = CInt->getZExtValue();
-	// 		if(debugGenOpenQASM)
-	// 			errs() << "\tFound constant argument = " << CInt->getValue() << "\n";
-	// 	}
-
-	// 	//check if argument is constant float	
-	// 	if(ConstantFP *CFP = dyn_cast<ConstantFP>(callInst->getArgOperand(iOperand))){
-	// 		tmpQGateArg.val = CFP->getValueAPF().convertToDouble();
-	// 		tmpQGateArg.isDouble = true;
-	// 		if(debugGenOpenQASM){
-	// 			errs()<<"\tCall Inst = "<<*callInst<<"\n";
-	// 			errs()<<"\tFound constant double argument = "<<tmpQGateArg.val<<"\n";
-	// 		}
-	// 	}
-
-	// 	tmpDepQbit.push_back(tmpQGateArg);
-
-	// 	tracked_all_operands &= backtraceOperand(callInst->getArgOperand(iOperand),0);
-
-	// 	if(tmpDepQbit.size()>0){
-	// 		allDepQbit.push_back(tmpDepQbit[0]);
-	// 		assert(tmpDepQbit.size() == 1 && "tmpDepQbit SIZE GT 1");
-	// 		tmpDepQbit.clear();
-	// 	}
 	}
 				
 	//form info packet
 	FnCall fnCallInfoPack;
 	fnCallInfoPack.func = callInst->getCalledFunction();
 	fnCallInfoPack.instPtr = callInst;
-	
-	// if(allDepQbit_.size() > 0){
-	// 	if(debugGenOpenQASM){
-	// 		errs() << "\t---Func Call Summary: " << callInst->getCalledFunction()->getName();	    
-	// 		errs() << ": Has Arguments: ";       
-	// 		for(unsigned int vb=0; vb<allDepQbit_.size(); vb++){
-	// 			if(allDepQbit_[vb].argPtr)
-	// 				errs() << allDepQbit[vb].argPtr->getName() << " ";
-	// 			else
-	// 				errs() << allDepQbit[vb].valOrIndex << " ";
-	// 		}
-	// 		errs() << "\n";
-	// 	}
-
-	// 	//populate vector of passed qubit arguments
-	// 	for(unsigned int vb = 0; vb < allDepQbit.size(); vb++)
-	// 		fnCallInfoPack.qArgs.push_back(allDepQbit[vb]);
-	// }
 
 	if(allDepQbit_.size() > 0){
 		for(unsigned iArg = 0; iArg < allDepQbit_.size(); iArg++)
@@ -972,6 +613,11 @@ void GenQASM::analyzeInst_block(BasicBlock * basicBlock, Instruction * pInst){
 			errs() << "\tNum Operands: " << numOps << ";\n";
 		}
 		processConditionInst(basicBlock, BI);
+	}else if(LoadInst *LI = dyn_cast<LoadInst>(pInst)){
+		if(debugGenOpenQASM){
+			errs() << "\n\tLoad Instruction: " << *LI << "\n";
+			errs() << "\tNum Operands: " << numOps << ";\n";
+		}
 	}else{
 		if(debugGenOpenQASM){
 			errs() << "\n\tUnhandled Instruction: " << *pInst << "\n";
@@ -992,10 +638,13 @@ void GenQASM::genQASM_REG(Function* F){
 			int j = numDim-2;
 			vector<int> count(numDim-1,0);
 			for(int n = 0; n < num/(*vvit).dimSize[numDim-1]; n++){
-				errs() << "qreg " << (*vvit).getName();
+				string ss = (*vvit).getName();
+				std::replace(ss.begin(), ss.end(), '.', 'x');
+				std::replace(ss.begin(), ss.end(), '_', 'x');
+				errs() << "qreg " << ss;
 				/* dimension more than one. */
 				if(j >= 0){
-					for(int i = 0; i < numDim-1; i++) errs() << "_" << count[i];
+					for(int i = 0; i < numDim-1; i++) errs() << "x" << count[i];
 					if(count[j] < (*vvit).dimSize[j]-1) count[j]++; else j--;
 				}
 				errs() << "[" << (*vvit).dimSize[numDim-1] << "];\n";
@@ -1007,13 +656,23 @@ void GenQASM::genQASM_REG(Function* F){
 			int numDim = (*vvit).dimSize.size();
 			int j = numDim-1;
 			vector<int> count(numDim,0);
-			for(int n = 0; n < num; n++){
-				errs() << "creg " << (*vvit).getName();
-				for(int i = 0; i < numDim; i++){
-					errs() << "_" << count[i];
+			if((*vvit).isPtr){
+				string ss = (*vvit).getName();
+				std::replace(ss.begin(), ss.end(), '.', 'x');
+				std::replace(ss.begin(), ss.end(), '_', 'x');
+				errs() << "creg " << ss << "[" << num << "];\n";
+			}else{
+				for(int n = 0; n < num; n++){
+					string ss = (*vvit).getName();
+					std::replace(ss.begin(), ss.end(), '.', 'x');
+					std::replace(ss.begin(), ss.end(), '_', 'x');
+					errs() << "creg " << ss;
+					for(int i = 0; i < numDim; i++){
+						errs() << "x" << count[i];
+					}
+					if(count[j] < (*vvit).dimSize[j]) count[j]++; else j--;
+					errs() << "[1];\n";
 				}
-				if(count[j] < (*vvit).dimSize[j]) count[j]++; else j--;
-				errs() << "[1];\n";
 			}
 		}
 	}
@@ -1051,9 +710,10 @@ void GenQASM::genQASM_block(BasicBlock * blockBlock){
 
 			if(fToPrint.find("Prep") != string::npos) {
 
+				if(fnCallList[mIndex].qArgs_.front().isPtr) fnCallList[mIndex].qArgs_.front().isPtr = false;
+
 				errs()<<"reset " << fnCallList[mIndex].qArgs_.front().qbitVarString() << ";\n";
 
-				/////Pending...
 				/* For preparation to | 1 > state, apply a bit flip after reset to get 0->1. */
 				if(fnCallList[mIndex].qArgs_.back().intValue == 1)
 					errs() << "x " << fnCallList[mIndex].qArgs_.front().qbitVarString() << ";\n";
@@ -1069,6 +729,10 @@ void GenQASM::genQASM_block(BasicBlock * blockBlock){
 				/* Fredkin Gate Decomposition. */
 				errs() << "//Decompose Fredkin(q0, q1, q2) = (I ⊗ CNOT(q1, q2)) * Toffoli(q0, q2, q1) * (I ⊗ CNOT(q1, q2))\n";
 				
+				if(fnCallList[mIndex].qArgs_[0].isPtr) fnCallList[mIndex].qArgs_[0].isPtr = false;
+				if(fnCallList[mIndex].qArgs_[1].isPtr) fnCallList[mIndex].qArgs_[1].isPtr = false;
+				if(fnCallList[mIndex].qArgs_[2].isPtr) fnCallList[mIndex].qArgs_[2].isPtr = false;
+
 				//Step 1, CNOT(second input, third input)
 				errs() << "cx " << fnCallList[mIndex].qArgs_[1].qbitVarString() << ", ";
 				errs() << fnCallList[mIndex].qArgs_[2].qbitVarString() << ";\n";
@@ -1090,10 +754,10 @@ void GenQASM::genQASM_block(BasicBlock * blockBlock){
 			else if(fToPrint.substr(0,2) == "Rz") fToPrint = "rz";
 
 			if(fToPrint.find("rx") != string::npos || fToPrint.find("ry") != string::npos || fToPrint.find("rz") != string::npos){
+				if(fnCallList[mIndex].qArgs_.front().isPtr) fnCallList[mIndex].qArgs_.front().isPtr = false;
 				errs() << fToPrint << "(" << fnCallList[mIndex].qArgs_.back().val() << ") "
 					<< fnCallList[mIndex].qArgs_.front().qbitVarString() << ";\n";
 				continue;
-
 			}
 
 			if(fToPrint.find("CNOT") != string::npos) fToPrint = "cx";
@@ -1113,8 +777,10 @@ void GenQASM::genQASM_block(BasicBlock * blockBlock){
 			errs() << fToPrint << " ";
 			for(vector<dataRepresentation>::iterator vpIt=fnCallList[mIndex].qArgs_.begin(), 
 				vpItE=fnCallList[mIndex].qArgs_.end(); vpIt != vpItE-1; ++vpIt){
+					if(vpIt->isPtr) vpIt->isPtr = false;
 					errs() << vpIt->qbitVarString() << ", ";
 			}
+			if(fnCallList[mIndex].qArgs_.back().isPtr) fnCallList[mIndex].qArgs_.back().isPtr = false;
 			errs()<< fnCallList[mIndex].qArgs_.back().qbitVarString() << ";\n";
     	}
     }
@@ -1144,58 +810,6 @@ void GenQASM::getFunctionArguments(Function* F){
 		funcArgList.push_back(arg);
 		if(debugGenOpenQASM) arg.printDebugMode();
 
-		// std::string argName = (ait->getName()).str();
-		// unsigned int argNum=ait->getArgNo();         
-
-		// qGateArg tmpQArg;
-		// tmpQArg.argPtr = ait;
-		// tmpQArg.argNum = argNum;
-
-		// if(argType->isPointerTy()){
-		// 	if(debugGenOpenQASM) errs()<<"Argument Type: " << *argType <<"\n";
-			
-		// 	tmpQArg.isPtr = true;
-
-		// 	Type *elementType = argType->getPointerElementType();
-		// 	if(elementType->isIntegerTy(16)){
-		// 		tmpQArg.isQbit = true;
-		// 		vectQbit.push_back(ait);
-		// 		qbitsInCurrentFunc.push_back(tmpQArg);
-		// 		funcArgList.push_back(tmpQArg);
-		// 	}else if(elementType->isIntegerTy(1)){
-		// 		tmpQArg.isCbit = true;
-		// 		vectQbit.push_back(ait);
-		// 		qbitsInCurrentFunc.push_back(tmpQArg);
-		// 		funcArgList.push_back(tmpQArg);
-		// 	}else if(elementType->isIntegerTy(8)){
-		// 		tmpQArg.isAbit = true;
-		// 		vectQbit.push_back(ait);
-		// 		qbitsInCurrentFunc.push_back(tmpQArg);
-		// 		funcArgList.push_back(tmpQArg);
-		// 	}else if(argType->isIntegerTy(16)){
-		// 		tmpQArg.isQbit = true;
-		// 		vectQbit.push_back(ait);
-		// 		qbitsInCurrentFunc.push_back(tmpQArg);
-		// 		funcArgList.push_back(tmpQArg);
-		// 	}else if(argType->isIntegerTy(32)){
-		// 		tmpQArg.isParam = true;
-		// 		vectQbit.push_back(ait);
-		// 		funcArgList.push_back(tmpQArg);
-		// 	}else if(argType->isIntegerTy(1)){
-		// 		tmpQArg.isCbit = true;
-		// 		vectQbit.push_back(ait);
-		// 		qbitsInCurrentFunc.push_back(tmpQArg);
-		// 		funcArgList.push_back(tmpQArg);
-		// 	}else if(argType->isIntegerTy(8)){
-		// 		tmpQArg.isAbit = true;
-		// 		vectQbit.push_back(ait);
-		// 		qbitsInCurrentFunc.push_back(tmpQArg);
-		// 		funcArgList.push_back(tmpQArg);
-		// 	}else if(argType->isDoubleTy())
-		// 		funcArgList.push_back(tmpQArg);
-
-		// 	if(debugGenOpenQASM) print_qgateArg_debug(tmpQArg);
-		// }
 	}
 }
 
@@ -1254,9 +868,10 @@ bool GenQASM::runOnModule(Module &M){
 					mapQbitsInit.insert(make_pair(F, qbitsInitInCurrentFunc_));
 					mapFuncArgs.insert(make_pair(F, funcArgList));
 					qFuncs.push_back(F);
-					
-					errs() << "\n-----END" << "\n";
-					errs() << "\n\n-----ANALYZE QUANTUM FUNC CALL IN FUNCTION : " << F->getName() << "----\n";
+					if(debugGenOpenQASM){
+						errs() << "\n-----END" << "\n";
+						errs() << "\n\n-----ANALYZE QUANTUM FUNC CALL IN FUNCTION : " << F->getName() << "----\n";
+					}
 
 					for(Function::iterator BB = F->begin(), BBend = F->end(); BB != BBend; ++BB){
 						BasicBlock * basicBlock = BB;
