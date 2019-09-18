@@ -22,20 +22,20 @@ for test_case in $ROOT/test_cases/*; do
         diff total_gates.txt $test_case/total_gates.txt
         if cmp total_gates.txt $test_case/total_gates.txt
         then
-            echo -e "[$test_case] Generating Resource Estimate \e[32mSucceeded\e[39m"
+            echo -e "[$test_case] Generating Resource Estimate \033[0;32mSucceeded\033[m"
 			let "successful_tests=successful_tests+1"
         else
-            echo -e "[$test_case] Generating Resource Estimate \e[31mFailed\e[39m"
+            echo -e "[$test_case] Generating Resource Estimate \033[0;31mFailed\033[m"
         fi
 		let "total_tests=total_tests+1"
 
         $ROOT/scaffold.sh -q -T $test_case/*.scaffold
         if cmp *.qasmh $test_case/*.qasmh;
         then
-            echo -e "[$test_case] Generating Hierarchical QASM \e[32mSucceeded\e[39m"
+            echo -e "[$test_case] Generating Hierarchical QASM \033[0;32mSucceeded\033[m"
 			let "successful_tests=successful_tests+1"
         else
-            echo -e "[$test_case] Generating Hierarchical QASM \e[31mFailed\e[39m"
+            echo -e "[$test_case] Generating Hierarchical QASM \033[0;31mFailed\033[m"
         fi
 
 		let "total_tests=total_tests+1"
@@ -43,10 +43,10 @@ for test_case in $ROOT/test_cases/*; do
         $ROOT/scaffold.sh -f -T $test_case/*.scaffold
         if cmp *.qasmf $test_case/*.qasmf;
         then
-            echo -e "[$test_case] Generating Flattened QASM \e[32mSucceeded\e[39m"
+            echo -e "[$test_case] Generating Flattened QASM \033[0;32mSucceeded\033[m"
 			let "successful_tests=successful_tests+1"
         else
-            echo -e "[$test_case] Generating Flattened QASM \e[31mFailed\e[39m"
+            echo -e "[$test_case] Generating Flattened QASM \033[0;31mFailed\033[m"
         fi
 
 		let "total_tests=total_tests+1"
@@ -54,10 +54,10 @@ for test_case in $ROOT/test_cases/*; do
         $ROOT/scaffold.sh -b -T $test_case/*.scaffold
         if cmp *.qasm $test_case/*.qasm;
         then
-            echo -e "[$test_case] Generating OpenQASM \e[32mSucceeded\e[39m"
+            echo -e "[$test_case] Generating OpenQASM \003[0;32mSucceeded\033[m"
 			let "successful_tests=successful_tests+1"
         else
-            echo -e "[$test_case] Generating OpenQASM \e[31mFailed\e[39m"
+            echo -e "[$test_case] Generating OpenQASM \033[0;31mFailed\033[m"
         fi
 
 		let "total_tests=total_tests+1"
@@ -68,8 +68,8 @@ for test_case in $ROOT/test_cases/*; do
     fi
 done
 if [ ${successful_tests} -eq ${total_tests} ]; then 
-	echo -e "\e[32mAll Tests Successful\e[39m"
+	echo -e "\033[0;32mAll Tests Successful\033[m"
 else 
-	echo -e "\e[31m${successful_tests}/${total_tests} tests successful\e[39m"
+	echo -e "\033[0;31m${successful_tests}/${total_tests} tests successful\033[m"
 fi
 echo -e "==================================="
