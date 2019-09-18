@@ -54,7 +54,7 @@
 
 using namespace llvm;
 
-bool debugResourceCount = true;
+bool debugResourceCount = false;
 
 // An anonymous namespace for the pass. Things declared inside it are
 // only visible to the current file.
@@ -108,6 +108,9 @@ namespace {
       case qbit:
         errs() << "qubit\n";
         break;
+      case abit:
+        errs() << "abit\n";
+        break;
       case cbit:
         errs() << "cbit\n";
         break;
@@ -128,7 +131,9 @@ namespace {
   argType quantumRegisterSetupHelper(quantumRepresentation * qRegister, Type * type){
 		if(type->isIntegerTy(16)){
 			return qbit;
-		}else if(type->isArrayTy()){
+		}else if(type->isIntegerTy(8)){
+      return abit;
+    }else if(type->isArrayTy()){
 			ArrayType * arrayType = dyn_cast<ArrayType>(type);
 			qRegister->dimSize.push_back(arrayType->getNumElements());
 			return quantumRegisterSetupHelper(qRegister, arrayType->getElementType());
@@ -149,6 +154,8 @@ namespace {
 
   bool isAllocQuantumType(Type * allocatedType){
   if(allocatedType->isIntegerTy(16)){
+    return true;
+  }else if(allocatedType->isIntegerTy(8)){
     return true;
   }else if(ArrayType * arrayType = dyn_cast<ArrayType>(allocatedType)){
     return isAllocQuantumType(arrayType->getElementType());
@@ -179,6 +186,7 @@ namespace {
         if(AllocaInst * AI = dyn_cast<AllocaInst>(Inst)){
           if(debugResourceCount) errs() << "\n\tAllocation Instruction: " << *AI << "\n";
           Type * allocatedType_ = AI->getAllocatedType();
+          /* Qubits? */
            if(isAllocQuantumType(allocatedType_)){
             if(debugResourceCount) errs() << "\tNew qubit allocation: " << AI->getName() << "\n";
             quantumRepresentation qRegister;
@@ -186,7 +194,15 @@ namespace {
             quantumRegisterSetup(&qRegister);
             if(debugResourceCount) qRegister.printDebugMode();
             int n = qRegister.count();
-            FunctionResources[F][Qbits_] += n;
+            if(qRegister.type == qbit){
+              FunctionResources[F][Qbits_] += n;
+            }else if(qRegister.type == abit){
+              FunctionResources[F][Gross_A_] += n;
+              FunctionResources[F][Net_A_] += n;
+              if(FunctionResources[F][Width_] < FunctionResources[F][Net_A_])
+                FunctionResources[F][Width_] = FunctionResources[F][Net_A_];              
+            }
+
           }
         }else if(GetElementPtrInst * GEPI = dyn_cast<GetElementPtrInst>(Inst)){
           if(debugResourceCount) errs() << "\n\tGetElementPointer Instruction: " << *GEPI << "\n";
@@ -205,7 +221,7 @@ namespace {
         if(CallInst * CI = dyn_cast<CallInst>(Inst)){
           if(debugResourceCount) errs() << "\tCall Inst: " << *CI << "\n";
           Function *callee = CI->getCalledFunction();
-          //if(callee->isIntrinsic()){
+          if(callee->isIntrinsic()){
             
             if(callee->getName().find("llvm.MeasX.") != std::string::npos){
               if(debugResourceCount) errs() << "\tFind MeasX Gate.\n";
@@ -280,8 +296,7 @@ namespace {
               FunctionResources[F][All_]++;
               FunctionResources[F][Fredkin_]++;              
             }
-          //}
-          else if(CI->getCalledFunction()->getName().find("afree") != std::string::npos){
+          }else if(CI->getCalledFunction()->getName().find("afree") != std::string::npos){
             if(debugResourceCount) errs() << "\tBegin free...\n";
             if(debugResourceCount) errs() << "\tName: " << CI->getArgOperand(0)->getName() << "\n";
             uint64_t addNum = 0;
@@ -295,7 +310,15 @@ namespace {
             errs() << "Net Then Width" << FunctionResources[F][Net_A_] << " " << FunctionResources[F][Width_] << "\n"; 
             if(debugResourceCount) errs() << "Finish free.\n";
           }else{
-            /* Non-intrinsic Function Call. */
+            /* Non-intrinsic Function Call, resource has been entered for this call previously.
+              Look them up and add to the resource table in this function. */
+              if (FunctionResources.find(callee) != FunctionResources.end()){
+              unsigned long long* callee_numbers = FunctionResources.find(callee)->second;
+              FunctionResources[F][14] += callee_numbers[14];
+              if(callee_numbers[3] > FunctionResources[F][3] - FunctionResources[F][2])
+                FunctionResources[F][3] = FunctionResources[F][2] + callee_numbers[3];
+              for (int l=0; l<NCOUNTS; l++) if(l!=3) FunctionResources[F][l] += callee_numbers[l];
+            }
           }
 
         // /* Qubits? */
