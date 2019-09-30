@@ -31,10 +31,9 @@ using namespace llvm;
 using namespace std;
 
 #define MAX_BACKTRACE_COUNT 150 //max number of backtrace allowed (avoid infinite recursive backtrace)
-#define MAX_QBIT_ARR_DIM 50 //max dimensions allowed for qbit arrays
 
 /* Set true if debug mode. */
-bool debugGenOpenQASM = true;
+bool debugGenOpenQASM = false;
 
 namespace{
 
@@ -89,12 +88,12 @@ namespace{
 	struct FnCall{
 		Function* func;
 		Value* instPtr;
-		std::vector<dataRepresentation> qArgs_;
+		std::vector<dataRepresentation> qArgs;
 	};
 
 	struct CondCall{
 		Value* instPtr;
-		std::vector<dataRepresentation> qArgs_;
+		std::vector<dataRepresentation> qArgs;
 	};
 
 	bool dataRepresentation::isClassical(){
@@ -242,7 +241,6 @@ namespace{
 		AllocaInst * AI = dyn_cast<AllocaInst>(qRegister->instPtr);
 		Type * allocatedType = AI->getAllocatedType();
 		qRegister->type = quantumRegisterSetupHelper(qRegister, allocatedType);
-		//if(qRegister->type == cbit) qRegister->isPtr = true;
 	}
 
 	void classicalRegisterSetup(dataRepresentation * cRegister){
@@ -260,7 +258,6 @@ namespace{
 			errs() << "Unhandled Case!\n";
 			return;
 		};
-
 	}
 
 	bool isAllocQuantumType(Type * allocatedType){
@@ -289,13 +286,13 @@ namespace{
 		map<Function *, vector<dataRepresentation>> mapQbitsInit;
 		map<Function *, vector<dataRepresentation>> mapFuncArgs;
 
-		vector<dataRepresentation> qbitsInCurrentFunc_;
-		vector<dataRepresentation> qbitsInitInCurrentFunc_;
+		vector<dataRepresentation> qbitsInCurrentFunc;
+		vector<dataRepresentation> qbitsInitInCurrentFunc;
 		vector<dataRepresentation> funcArgList;
 
 		vector<FnCall> fnCall;
 
-		map<Value*, dataRepresentation> mapInstRtn_;
+		map<Value*, dataRepresentation> mapInstRtn;
 
 		/* If the block branches to more than one successors. */
 		map<BasicBlock *, vector<dataRepresentation>> basicBlockCondTable;
@@ -332,7 +329,6 @@ char GenQASM::ID = 0;
 static RegisterPass<GenQASM>
 X("gen-openqasm", "Generate OpenQASM output code"); //spatil: should be Z or X??
 
-
 void GenQASM::backtraceOperand_helper(dataRepresentation * datRepPtr, Value * operand, int gettingIndex, backtraceExp exp){
 
 	if(backtraceCount > MAX_BACKTRACE_COUNT){
@@ -347,8 +343,8 @@ void GenQASM::backtraceOperand_helper(dataRepresentation * datRepPtr, Value * op
 			errs() << "\n\t\tAlloca inst Found: " << *AI << "\n";
 		datRepPtr->instPtr = AI;
 		if(datRepPtr->isPtr){
-			for(vector<dataRepresentation>::iterator vvit = qbitsInitInCurrentFunc_.begin(),
-				vvitE = qbitsInitInCurrentFunc_.end(); vvit != vvitE; ++vvit){
+			for(vector<dataRepresentation>::iterator vvit = qbitsInitInCurrentFunc.begin(),
+				vvitE = qbitsInitInCurrentFunc.end(); vvit != vvitE; ++vvit){
 				if((*vvit).iscbit()){
 					(*vvit).isPtr = true;
 				}
@@ -488,16 +484,16 @@ void GenQASM::analyzeAllocInst(Function * F, Instruction * pInst){
 						if((*vvit).instPtr->getName() == qbitname) qbitExisting = true;
 					}
 					
-					if(!qbitExisting) qbitsInCurrentFunc_.push_back(qRegister);
+					if(!qbitExisting) qbitsInCurrentFunc.push_back(qRegister);
 				}else{
 					//qubits/new qubits in function
-					qbitsInCurrentFunc_.push_back(qRegister);
-					qbitsInitInCurrentFunc_.push_back(qRegister);
+					qbitsInCurrentFunc.push_back(qRegister);
+					qbitsInitInCurrentFunc.push_back(qRegister);
 				}
 			}else{
 				//qubits/new qubits in function
-				qbitsInCurrentFunc_.push_back(qRegister);
-				qbitsInitInCurrentFunc_.push_back(qRegister);
+				qbitsInCurrentFunc.push_back(qRegister);
+				qbitsInitInCurrentFunc.push_back(qRegister);
 			}
 		}
     return;
@@ -515,14 +511,13 @@ void GenQASM::processStoreCbitInst(CallInst * CI){
 	if(debugGenOpenQASM) errs() << "\t\tBacktrace End, Cbit Found: " << "\n";
 	if(debugGenOpenQASM) cbit.printDebugMode();
 	tmpDepQbit_.push_back(cbit);
-	mapInstRtn_[rtnVal_] = tmpDepQbit_[0];
+	mapInstRtn[rtnVal_] = tmpDepQbit_[0];
 	tmpDepQbit_.clear();
 
 	return;
 }
 
 void GenQASM::processCallInst(CallInst * callInst){
-	
 	/* Traverse all argument operand in call inst. */
 	for(unsigned iOperand = 0; iOperand < callInst->getNumArgOperands(); iOperand++){
 
@@ -553,7 +548,7 @@ void GenQASM::processCallInst(CallInst * callInst){
 
 	if(allDepQbit_.size() > 0){
 		for(unsigned iArg = 0; iArg < allDepQbit_.size(); iArg++)
-			fnCallInfoPack.qArgs_.push_back(allDepQbit_[iArg]);
+			fnCallInfoPack.qArgs.push_back(allDepQbit_[iArg]);
 	}
 	fnCall.push_back(fnCallInfoPack);
 	return;
@@ -629,8 +624,8 @@ void GenQASM::analyzeInst_block(BasicBlock * basicBlock, Instruction * pInst){
 
 void GenQASM::genQASM_REG(Function* F){
 	/* Print qbits declared in function. */
-	for(vector<dataRepresentation>::iterator vvit = qbitsInitInCurrentFunc_.begin(),
-		vvitE = qbitsInitInCurrentFunc_.end(); vvit != vvitE; ++vvit){
+	for(vector<dataRepresentation>::iterator vvit = qbitsInitInCurrentFunc.begin(),
+		vvitE = qbitsInitInCurrentFunc.end(); vvit != vvitE; ++vvit){
 		
 		if((*vvit).isqbit()){
 			int num = accumulate((*vvit).dimSize.begin(), (*vvit).dimSize.end(), 1, multiplies<int>());
@@ -683,7 +678,7 @@ void GenQASM::genQASM_block(BasicBlock * blockBlock){
 
 	for(unsigned mIndex = 0; mIndex < fnCallList.size(); mIndex++){
 		/* If the FuncCall is related to quantum operation. */
-		if(fnCallList[mIndex].qArgs_.size()>0){
+		if(fnCallList[mIndex].qArgs.size()>0){
 			string fToPrint = fnCallList[mIndex].func->getName();
 			if(fToPrint.find("llvm.") != string::npos) fToPrint = fToPrint.substr(5);
 
@@ -692,17 +687,17 @@ void GenQASM::genQASM_block(BasicBlock * blockBlock){
 			//and Fredkin in terms of the other gates during an earlier LLVM pass
 
 			if(fToPrint.find("MeasX") != string::npos){
-				errs()<<"h " << fnCallList[mIndex].qArgs_.front().qbitVarString() << ";\n";
+				errs()<<"h " << fnCallList[mIndex].qArgs.front().qbitVarString() << ";\n";
 				fToPrint = "MeasZ";
 			}
 
 			if(fToPrint.find("MeasZ") != string::npos){
-				errs()<<"measure " << fnCallList[mIndex].qArgs_.front().qbitVarString() << " -> ";
+				errs()<<"measure " << fnCallList[mIndex].qArgs.front().qbitVarString() << " -> ";
 
 				//get inst ptr
 				Value* thisInstPtr = fnCallList[mIndex].instPtr;
-				map<Value*, dataRepresentation>::iterator hit = mapInstRtn_.find(thisInstPtr);
-				if(hit != mapInstRtn_.end()){
+				map<Value*, dataRepresentation>::iterator hit = mapInstRtn.find(thisInstPtr);
+				if(hit != mapInstRtn.end()){
 					errs() << hit->second.cbitVarString() << ";\n";
 				}
 				continue;
@@ -710,17 +705,17 @@ void GenQASM::genQASM_block(BasicBlock * blockBlock){
 
 			if(fToPrint.find("Prep") != string::npos) {
 
-				if(fnCallList[mIndex].qArgs_.front().isPtr) fnCallList[mIndex].qArgs_.front().isPtr = false;
+				if(fnCallList[mIndex].qArgs.front().isPtr) fnCallList[mIndex].qArgs.front().isPtr = false;
 
-				errs()<<"reset " << fnCallList[mIndex].qArgs_.front().qbitVarString() << ";\n";
+				errs()<<"reset " << fnCallList[mIndex].qArgs.front().qbitVarString() << ";\n";
 
 				/* For preparation to | 1 > state, apply a bit flip after reset to get 0->1. */
-				if(fnCallList[mIndex].qArgs_.back().intValue == 1)
-					errs() << "x " << fnCallList[mIndex].qArgs_.front().qbitVarString() << ";\n";
+				if(fnCallList[mIndex].qArgs.back().intValue == 1)
+					errs() << "x " << fnCallList[mIndex].qArgs.front().qbitVarString() << ";\n";
 
 				/* For preparation in X basis, change basis from Z basis with H gate. */
 				if(fToPrint.find("PrepX") != string::npos)
-					errs() << "h " << fnCallList[mIndex].qArgs_.front().qbitVarString() << ";\n";
+					errs() << "h " << fnCallList[mIndex].qArgs.front().qbitVarString() << ";\n";
 
 				continue;
 			}
@@ -729,22 +724,22 @@ void GenQASM::genQASM_block(BasicBlock * blockBlock){
 				/* Fredkin Gate Decomposition. */
 				errs() << "//Decompose Fredkin(q0, q1, q2) = (I ⊗ CNOT(q1, q2)) * Toffoli(q0, q2, q1) * (I ⊗ CNOT(q1, q2))\n";
 				
-				if(fnCallList[mIndex].qArgs_[0].isPtr) fnCallList[mIndex].qArgs_[0].isPtr = false;
-				if(fnCallList[mIndex].qArgs_[1].isPtr) fnCallList[mIndex].qArgs_[1].isPtr = false;
-				if(fnCallList[mIndex].qArgs_[2].isPtr) fnCallList[mIndex].qArgs_[2].isPtr = false;
+				if(fnCallList[mIndex].qArgs[0].isPtr) fnCallList[mIndex].qArgs[0].isPtr = false;
+				if(fnCallList[mIndex].qArgs[1].isPtr) fnCallList[mIndex].qArgs[1].isPtr = false;
+				if(fnCallList[mIndex].qArgs[2].isPtr) fnCallList[mIndex].qArgs[2].isPtr = false;
 
 				//Step 1, CNOT(second input, third input)
-				errs() << "cx " << fnCallList[mIndex].qArgs_[1].qbitVarString() << ", ";
-				errs() << fnCallList[mIndex].qArgs_[2].qbitVarString() << ";\n";
+				errs() << "cx " << fnCallList[mIndex].qArgs[1].qbitVarString() << ", ";
+				errs() << fnCallList[mIndex].qArgs[2].qbitVarString() << ";\n";
 
 				//Step 2, Toffoli(first input, third input, second input)
-				errs() << "ccx " << fnCallList[mIndex].qArgs_[0].qbitVarString() << ", ";
-				errs() << fnCallList[mIndex].qArgs_[1].qbitVarString() << ", ";
-				errs() << fnCallList[mIndex].qArgs_[2].qbitVarString() << ";\n";
+				errs() << "ccx " << fnCallList[mIndex].qArgs[0].qbitVarString() << ", ";
+				errs() << fnCallList[mIndex].qArgs[1].qbitVarString() << ", ";
+				errs() << fnCallList[mIndex].qArgs[2].qbitVarString() << ";\n";
 
 				//Step 3, CNOT(second input, third input)
-				errs() << "cx " << fnCallList[mIndex].qArgs_[1].qbitVarString() << ", ";
-				errs() << fnCallList[mIndex].qArgs_[2].qbitVarString() << ";\n";
+				errs() << "cx " << fnCallList[mIndex].qArgs[1].qbitVarString() << ", ";
+				errs() << fnCallList[mIndex].qArgs[2].qbitVarString() << ";\n";
 
 				continue;
 			}
@@ -754,9 +749,9 @@ void GenQASM::genQASM_block(BasicBlock * blockBlock){
 			else if(fToPrint.substr(0,2) == "Rz") fToPrint = "rz";
 
 			if(fToPrint.find("rx") != string::npos || fToPrint.find("ry") != string::npos || fToPrint.find("rz") != string::npos){
-				if(fnCallList[mIndex].qArgs_.front().isPtr) fnCallList[mIndex].qArgs_.front().isPtr = false;
-				errs() << fToPrint << "(" << fnCallList[mIndex].qArgs_.back().val() << ") "
-					<< fnCallList[mIndex].qArgs_.front().qbitVarString() << ";\n";
+				if(fnCallList[mIndex].qArgs.front().isPtr) fnCallList[mIndex].qArgs.front().isPtr = false;
+				errs() << fToPrint << "(" << fnCallList[mIndex].qArgs.back().val() << ") "
+					<< fnCallList[mIndex].qArgs.front().qbitVarString() << ";\n";
 				continue;
 			}
 
@@ -775,13 +770,13 @@ void GenQASM::genQASM_block(BasicBlock * blockBlock){
 			std::replace(fToPrint.begin(), fToPrint.end(), '-', '_');
 
 			errs() << fToPrint << " ";
-			for(vector<dataRepresentation>::iterator vpIt=fnCallList[mIndex].qArgs_.begin(), 
-				vpItE=fnCallList[mIndex].qArgs_.end(); vpIt != vpItE-1; ++vpIt){
+			for(vector<dataRepresentation>::iterator vpIt=fnCallList[mIndex].qArgs.begin(), 
+				vpItE=fnCallList[mIndex].qArgs.end(); vpIt != vpItE-1; ++vpIt){
 					if(vpIt->isPtr) vpIt->isPtr = false;
 					errs() << vpIt->qbitVarString() << ", ";
 			}
-			if(fnCallList[mIndex].qArgs_.back().isPtr) fnCallList[mIndex].qArgs_.back().isPtr = false;
-			errs()<< fnCallList[mIndex].qArgs_.back().qbitVarString() << ";\n";
+			if(fnCallList[mIndex].qArgs.back().isPtr) fnCallList[mIndex].qArgs.back().isPtr = false;
+			errs()<< fnCallList[mIndex].qArgs.back().qbitVarString() << ";\n";
     	}
     }
 
@@ -796,26 +791,25 @@ void GenQASM::genQASM_block(BasicBlock * blockBlock){
 
 void GenQASM::getFunctionArguments(Function* F){
 	for(Function::arg_iterator ait=F->arg_begin(); ait!=F->arg_end(); ++ait){
-
 		dataRepresentation arg;
 		arg.instPtr = ait;
 		Type * argType = ait->getType();
 		if(isAllocQuantumType(argType)){
 			quantumRegisterSetup(&arg);
-			qbitsInCurrentFunc_.push_back(arg);
+			qbitsInCurrentFunc.push_back(arg);
 
 		}else{
 			classicalRegisterSetup(&arg);
 		}
 		funcArgList.push_back(arg);
 		if(debugGenOpenQASM) arg.printDebugMode();
-
 	}
 }
 
 /* Run - Find Datapaths for qubits. */
 bool GenQASM::runOnModule(Module &M){
-	vector<Function*> qFuncs;
+	/* Functions with quantum registers and operations. */
+	vector<Function*> quantumFuncs;
 
 	unsigned sccNum = 0;
 
@@ -823,13 +817,11 @@ bool GenQASM::runOnModule(Module &M){
 	errs() << "include \"qelib1.inc\";\n";
 
 	/* Iterate over all functions, and over all instructions in it. */
-	CallGraphNode* rootNode1 = getAnalysis<CallGraph>().getRoot();
-
-	for (scc_iterator<CallGraphNode*> sccIb = scc_begin(rootNode1),
-			E = scc_end(rootNode1); sccIb != E; ++sccIb){
+	CallGraphNode* rootNode = getAnalysis<CallGraph>().getRoot();
+	for (scc_iterator<CallGraphNode*> sccIb = scc_begin(rootNode),
+			E = scc_end(rootNode); sccIb != E; ++sccIb){
 
 		const std::vector<CallGraphNode*> &nextSCC = *sccIb;
-
 		if(debugGenOpenQASM) 
 			errs() << "\nSCC #" << ++sccNum << " : ";      
 
@@ -843,8 +835,8 @@ bool GenQASM::runOnModule(Module &M){
 					errs() << "Processing Function:" << F->getName() <<" \n ";
 
 				/* Initialize map structures for this function. */
-				qbitsInCurrentFunc_.clear();
-				qbitsInitInCurrentFunc_.clear();
+				qbitsInCurrentFunc.clear();
+				qbitsInitInCurrentFunc.clear();
 				funcArgList.clear();				
 
 				getFunctionArguments(F);
@@ -864,10 +856,10 @@ bool GenQASM::runOnModule(Module &M){
 				}
 
 				/* Process Quantum Function. */
-				if(qbitsInCurrentFunc_.size()>0){
-					mapQbitsInit.insert(make_pair(F, qbitsInitInCurrentFunc_));
+				if(qbitsInCurrentFunc.size()>0){
+					mapQbitsInit.insert(make_pair(F, qbitsInitInCurrentFunc));
 					mapFuncArgs.insert(make_pair(F, funcArgList));
-					qFuncs.push_back(F);
+					quantumFuncs.push_back(F);
 					if(debugGenOpenQASM){
 						errs() << "\n-----END" << "\n";
 						errs() << "\n\n-----ANALYZE QUANTUM FUNC CALL IN FUNCTION : " << F->getName() << "----\n";
@@ -903,17 +895,17 @@ bool GenQASM::runOnModule(Module &M){
 	}
 
 	bool hasMain = false;
-	for(vector<Function*>::iterator it = qFuncs.begin(); it!=qFuncs.end(); it++){
+	for(vector<Function*>::iterator it = quantumFuncs.begin(); it!=quantumFuncs.end(); it++){
 		if ((*it)->getName() == "main") hasMain = true;
 	}
 
 	vector<Function*>::iterator lastItPos;
 	if(!hasMain){
-		lastItPos = qFuncs.end();
+		lastItPos = quantumFuncs.end();
 		lastItPos--;
 	}
 
-	for(vector<Function*>::iterator it = qFuncs.begin(); it != qFuncs.end(); it++){
+	for(vector<Function*>::iterator it = quantumFuncs.begin(); it != quantumFuncs.end(); it++){
 		std::string newName = (*it)->getName();
 		if(newName.find("CNOT") != string::npos) newName = "CNOT";
 		else if(newName.find("NOT.") != string::npos) newName = "X";
