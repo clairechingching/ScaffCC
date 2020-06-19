@@ -33,7 +33,7 @@ using namespace std;
 #define MAX_BACKTRACE_COUNT 150 //max number of backtrace allowed (avoid infinite recursive backtrace)
 
 /* Set true if debug mode. */
-bool debugGenOpenQASM = false;
+bool debugGenOpenQASM = true;
 
 namespace{
 
@@ -78,7 +78,7 @@ namespace{
 		/* Used in conditional statement, since OpenQASM only support array-wise measurement. */
 		string cbitArrayString();
 
-		dataRepresentation() : instPtr(NULL), type(undef), isPtr(false), index({}), dimSize({}){}
+		dataRepresentation() : instPtr(NULL), type(undef), isPtr(false), index(vector<int>()), dimSize(vector<int>()){}
 
 		string getName(){ return instPtr->getName(); }
 		void printDebugMode();
@@ -133,7 +133,8 @@ namespace{
 
 	string dataRepresentation::qbitVarString(){
 		stringstream ss;
-		ss << getName();
+		if(!instPtr) return ss.str();
+    ss << getName();
 		if(!isPtr){
 			if(index.size() == 0) index.push_back(0);
 			if(index.size() > 1){
@@ -282,9 +283,9 @@ namespace{
 		std::vector<dataRepresentation> tmpDepQbit_;
 		std::vector<dataRepresentation> allDepQbit_;
 		
-		map<BasicBlock *, vector<FnCall>> fnCallTable; 
-		map<Function *, vector<dataRepresentation>> mapQbitsInit;
-		map<Function *, vector<dataRepresentation>> mapFuncArgs;
+		map<BasicBlock *, vector<FnCall> > fnCallTable; 
+		map<Function *, vector<dataRepresentation> > mapQbitsInit;
+		map<Function *, vector<dataRepresentation> > mapFuncArgs;
 
 		vector<dataRepresentation> qbitsInCurrentFunc;
 		vector<dataRepresentation> qbitsInitInCurrentFunc;
@@ -295,7 +296,7 @@ namespace{
 		map<Value*, dataRepresentation> mapInstRtn;
 
 		/* If the block branches to more than one successors. */
-		map<BasicBlock *, vector<dataRepresentation>> basicBlockCondTable;
+		map<BasicBlock *, vector<dataRepresentation> > basicBlockCondTable;
 
 		int backtraceCount;
 
@@ -379,6 +380,7 @@ void GenQASM::backtraceOperand_helper(dataRepresentation * datRepPtr, Value * op
 			if(debugGenOpenQASM) errs() << "\t\t[" << gettingIndex << "] Index: " << index << "\n";
 			datRepPtr->index.push_back(index);
 			backtraceOperand_helper(datRepPtr, GEPI->getOperand(0), gettingIndex, ptrToArray);
+      errs().flush();
 		}else{
 			errs() << "UNHANDLED GEPI CASE, BOOOOOOOOOO!\n";
 		}
@@ -388,8 +390,11 @@ void GenQASM::backtraceOperand_helper(dataRepresentation * datRepPtr, Value * op
 		if(debugGenOpenQASM)
 			errs() << "\n\t\tCall inst Found: " << *CI << "\n";
 		if(CI->getCalledFunction()->getName().find("llvm.Meas") != string::npos){
-			if(debugGenOpenQASM) errs() << "\n\t\tBACKTRACE OPERAND QUBIT: \n";
-			backtraceOperand_helper(datRepPtr, CI->getOperand(0), gettingIndex, exp);
+			if(debugGenOpenQASM){
+         errs() << "\n\t\tBACKTRACE OPERAND QUBIT: \n";
+			   errs().flush();
+      }
+      backtraceOperand_helper(datRepPtr, CI->getOperand(0), gettingIndex, exp);
 		}
 		return;
 	}else if(PtrToIntInst * PTTI = dyn_cast<PtrToIntInst>(operand)){
@@ -567,7 +572,9 @@ void GenQASM::processConditionInst(BasicBlock * basicBlock, BranchInst* branchIn
 		quantumRegisterSetup(&cbit);
 		if(debugGenOpenQASM) errs() << "\t\tBacktrace End, Cbit Found: " << "\n";
 		if(debugGenOpenQASM) cbit.printDebugMode();
-		vector<dataRepresentation> cond({measure, cbit});
+		vector<dataRepresentation> cond;
+    cond.push_back(measure);
+    cond.push_back(cbit);
 		basicBlockCondTable[basicBlock] = cond;
 
 		if(debugGenOpenQASM)
@@ -624,14 +631,22 @@ void GenQASM::analyzeInst_block(BasicBlock * basicBlock, Instruction * pInst){
 
 void GenQASM::genQASM_REG(Function* F){
 	/* Print qbits declared in function. */
-	for(vector<dataRepresentation>::iterator vvit = qbitsInitInCurrentFunc.begin(),
+	errs()<<F->getName()<<"\n";
+  int counter = 0;
+  for(vector<dataRepresentation>::iterator vvit = qbitsInitInCurrentFunc.begin(),
 		vvitE = qbitsInitInCurrentFunc.end(); vvit != vvitE; ++vvit){
-		
+	  errs()<<counter++<<"\n";
+    errs().flush();
 		if((*vvit).isqbit()){
+      errs()<<vvit->qbitVarString()<<"\n";
+      errs().flush();
 			int num = accumulate((*vvit).dimSize.begin(), (*vvit).dimSize.end(), 1, multiplies<int>());
 			int numDim = (*vvit).dimSize.size();
 			int j = numDim-2;
-			vector<int> count(numDim-1,0);
+			//vector<int> count(numDim-1,0);
+			vector<int> count(numDim,0);
+      errs()<<numDim<<"\n";
+      errs().flush();
 			for(int n = 0; n < num/(*vvit).dimSize[numDim-1]; n++){
 				string ss = (*vvit).getName();
 				std::replace(ss.begin(), ss.end(), '.', 'x');
@@ -644,6 +659,7 @@ void GenQASM::genQASM_REG(Function* F){
 				}
 				errs() << "[" << (*vvit).dimSize[numDim-1] << "];\n";
 			}
+      errs()<<counter<<" fdasdfghjk\n";
 		}
 
 		if((*vvit).iscbit()){
@@ -781,7 +797,7 @@ void GenQASM::genQASM_block(BasicBlock * blockBlock){
     }
 
 	/* Print conditional statement. */
-	map<BasicBlock *, vector<dataRepresentation>>::iterator hit = basicBlockCondTable.find(blockBlock);
+	map<BasicBlock *, vector<dataRepresentation> >::iterator hit = basicBlockCondTable.find(blockBlock);
 	if(basicBlockCondTable.end()!= hit){
 		errs() << "if(" << hit->second.back().cbitArrayString() << " ==" << 
 			hit->second.front().val() << ") ";
@@ -929,12 +945,12 @@ bool GenQASM::runOnModule(Module &M){
 
 		(*it)->setName(newName);
 		genQASM_REG((*it));
+    	errs().flush();
 
 		for(Function::iterator BB = (*it)->begin(), BBend = (*it)->end(); BB != BBend; ++BB){
 			BasicBlock * pBB = BB;
 			genQASM_block(pBB);
 		}
 	}
-	errs() << "\n";
 	return false;
 }

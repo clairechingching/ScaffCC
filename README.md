@@ -65,6 +65,14 @@ Building ScaffCC
             xcode-select --install
 
 2.  Python 2.7: Python is usually bundled with OS X. The built-in version should be sufficient.
+
+3.  CMake
+
+    -   “Source Build"
+
+        There are instructions for downloading and building CMake from
+        source at:
+        <https://cmake.org/install>
  
 #### For Unix build
 
@@ -141,7 +149,7 @@ of your system (“yum" on Red Hat or “apt-get" on Ubuntu).
 
 7.  Python 2.7
 
-8.  CMake (For Integrating RKQC Functionality)
+8.  CMake
 
     -   “Ubuntu"
 
@@ -210,8 +218,9 @@ To see a list of compiler options which can be passed as flags, run:
 
     ./scaffold.sh -h
 
-    Usage: ./scaffold.sh [-hv] [-rqfRFckdso] [-l #] [-P #] <filename>.scaffold
+    Usage: ./scaffold.sh [-hv] [-rtqfRFckdso] [-l #] [-P #] <filename>.scaffold
         -r   Generate resource estimate (default)
+        -t   Variable tracking
         -q   Generate QASM
         -f   Generate flattened QASM
         -b   Generate OpenQASM
@@ -404,6 +413,20 @@ of the RevKit platform.
 
 The documentation describing installation and usage of RKQC is included
 in the [docs/](https://github.com/epiqc/ScaffCC/tree/master/docs) directory, with the full documentation.
+
+Variable Tracking
+================
+
+Using "-t" to tracks which quantum gate is applied to quantum variables at 
+what time stamp. It is also one of the last passes so that it preserves the 
+information/order of final compilation result.
+
+Indexing is indicated in the brackets, and for multiple qubit gate, the 
+information about controlled/targeted qubit is indicated in the parenthesis. 
+For example, 
+CNOT(c) [0] means CNOT is applied on the 0 index of this quantum variable and 
+it is used as the controlled qubit.
+
 
 Expanding ScaffCC 
 =================

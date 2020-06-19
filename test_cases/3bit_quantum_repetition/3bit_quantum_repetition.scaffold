@@ -2,7 +2,7 @@ int main() {
     qbit q[3];
     qbit a[2];
     cbit c[3];
-    cbit syn[2];
+    cbit syn[3];
 
     X(q[0]);
 

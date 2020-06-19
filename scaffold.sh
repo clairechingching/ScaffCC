@@ -9,8 +9,9 @@ if [ $(echo $PATH | grep ${RKQC_PATH} | wc -l) -eq 0 ]; then
 fi
 
 function show_help {
-    echo "Usage: $0 [-hv] [-rqfORTFckdso] [-l #] [-P #] <filename>.scaffold"
+    echo "Usage: $0 [-hv] [-rtqfORTFckdso] [-l #] [-P #] <filename>.scaffold"
     echo "    -r   Generate resource estimate (default)"
+    echo "    -t   Variable tracking"
     echo "    -q   Generate QASM"
     echo "    -f   Generate flattened QASM"
     echo "    -b   Generate OpenQASM"
@@ -48,9 +49,10 @@ flat=0
 openqasm=0
 qc=0
 precision=4
+tracking=0
 targets=""
 optimize=0
-while getopts "h?vcdfbsOFkqroTRl:P:" opt; do
+while getopts "h?vcdfbsOFkqrtoTRl:P:" opt; do
     case "$opt" in
     h|\?)
         show_help
@@ -75,6 +77,8 @@ while getopts "h?vcdfbsOFkqroTRl:P:" opt; do
     q) targets="${targets} qasm"
         ;;
     r) res=1
+        ;;
+    t) tracking=1
         ;;
     O) coptimization=1
         ;;
@@ -108,6 +112,10 @@ fi
 
 if [ ${optimize} -eq 1 ]; then
 	targets="${targets} optimize"
+fi
+
+if [ ${tracking} -eq 1 ]; then
+    targets="${targets} tracking"
 fi
 
 # Put resources at the end so it is easy to read

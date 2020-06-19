@@ -3,7 +3,7 @@ include "qelib1.inc";
 qreg q[3];
 qreg a[2];
 creg c[3];
-creg syn[2];
+creg syn[3];
 x q[0];
 cx q[0], a[0];
 cx q[1], a[0];

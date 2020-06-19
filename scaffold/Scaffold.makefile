@@ -45,6 +45,11 @@ endif
 resources: $(FILE).resources
 
 ################################
+# Variable Tracking
+################################
+tracking: $(FILE).debug
+
+################################
 # Flat QASM generation
 ################################
 flat: $(FILE).qasmf
@@ -107,7 +112,7 @@ $(FILE)4.ll: $(FILE)1.ll
 		$(OPT) -S $(FILE)1a.ll -simplifycfg -domtree -o $(FILE)1b.ll > /dev/null; \
 		$(OPT) -S $(FILE)1b.ll -early-cse -lower-expect -o $(FILE)2.ll > /dev/null; \
 		$(OPT) -S $(FILE)2.ll -targetlibinfo -no-aa -tbaa -basicaa -globalopt -ipsccp -o $(FILE)3.ll > /dev/null; \
-		$(OPT) -S $(FILE)3.ll -simplifycfg -basiccg -prune-eh -always-inline -functionattrs -domtree -early-cse -lazy-value-info -correlated-propagation -tailcallelim  -reassociate  -loops -loop-simplify -lcssa -loop-rotate -licm -loop-unswitch -scalar-evolution -loop-simplify -iv-users -indvars -loop-idiom -loop-deletion -loop-unroll -memdep -memcpyopt -sccp -lazy-value-info -correlated-propagation -dse -adce -strip-dead-prototypes -preverify -verify -o $(FILE)4.ll > /dev/null; \
+		$(OPT) -S $(FILE)3.ll -simplifycfg -basiccg -prune-eh -always-inline -functionattrs -domtree -early-cse -lazy-value-info -constantprop -correlated-propagation -tailcallelim  -reassociate  -loops -loop-simplify -lcssa -loop-rotate -licm -loop-unswitch -scalar-evolution -loop-simplify -iv-users -indvars -loop-idiom -loop-deletion -loop-unroll -memdep -memcpyopt -sccp -lazy-value-info -correlated-propagation -dse -adce -strip-dead-prototypes -preverify -verify -o $(FILE)4.ll > /dev/null; \
 	else \
 		cp $(FILE)1.ll $(FILE)4.ll; \
 	fi
@@ -181,7 +186,7 @@ $(FILE)12.ll: $(FILE)11.ll
 $(FILE).resources: $(FILE)12.ll
 	@echo "[Scaffold.makefile] Generating resource count ..."	
 	@$(OPT) -load $(SCAFFOLD_LIB) -ResourceCount $(FILE)12.ll 2> $(FILE).resources > /dev/null
-	@echo "[Scaffold.makefile] Resources written to $(FILE).resources ..."  
+	@echo "[Scaffold.makefile] Resources written to $(FILE).resources ..."
 
 # Generate hierarchical QASM
 $(FILE).qasmh: $(FILE)12.ll
@@ -208,6 +213,14 @@ $(FILE).qasmf: $(FILE)12.ll
 	@./$(FILE)_qasm > $(FILE).tmp
 	@cat fdecl.out $(FILE).tmp > $(FILE).qasmf
 	@echo "[Scaffold.makefile] Flat QASM written to $(FILE).qasmf ..."	
+
+# Generate variable tracking from final LLVM output
+$(FILE).debug: $(FILE)12.ll
+	@echo "[Scaffold.makefile] Flattening modules ..."
+	@$(OPT) -S -load $(SCAFFOLD_LIB) -FlattenModule -all 1 $(FILE)12.ll -o $(FILE)12.inlined.ll 2> /dev/null
+	@echo "[Scaffold.makefile] Quantum Variables Tracking..."
+	@$(OPT) -load $(SCAFFOLD_LIB) -var-tracking $(FILE)12.inlined.ll 2> $(FILE).debug > /dev/null
+	@echo "[Scaffold.makefile] Variable Tracking written to $(FILE).debug ..."
 
 # Generate OpenQASM
 $(FILE).qasm: $(FILE)12.ll
@@ -238,6 +251,6 @@ purge:
 
 # clean removes all completed files
 clean: purge
-	@rm -f $(FILE).resources $(FILE).qasmh $(FILE).qasmf $(FILE).qasm $(FILE)_optimized.qasmf $(FILE).qc
+	@rm -f $(FILE).resources $(FILE).qasmh $(FILE).qasmf $(FILE).qasm $(FILE).debug $(FILE)_optimized.qasmf $(FILE).qc
 
 .PHONY: clean purge
